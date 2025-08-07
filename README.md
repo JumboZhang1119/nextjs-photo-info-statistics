@@ -1,0 +1,1 @@
+# nextjs-photo-info-statistics
