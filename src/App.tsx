@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import exifr from 'exifr';
 import { Bar } from 'react-chartjs-2';
 import { Sidebar } from './components/Sidebar';
@@ -116,6 +116,7 @@ function App() {
     // FNumber: '光圈值',
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- 資料處理 ---
 
@@ -243,71 +244,144 @@ function App() {
     }
     return photoResults;
   };
+
+  const handleLegacyFolderSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    setError('');
+    const files = event.target.files;
+
+    if (!files || files.length === 0) {
+      return; // 使用者沒有選擇任何檔案
+    }
+
+    // 將 FileList 轉換為真正的陣列
+    const fileArray = Array.from(files);
+    const totalFiles = fileArray.length;
+
+    setProgress({ loading: true, processed: 0, total: totalFiles, message: '正在解析照片 EXIF 資訊...' });
+
+    // 處理檔案（這裡不需要遞迴，因為 <input> 會一次性給出所有檔案）
+    const photoPromises = fileArray.map(async (file) => {
+      try {
+        const exifObj = await exifr.parse(file);
+        let processedExif: ExifData = {};
+        if (exifObj) {
+          processedExif = {
+            Make: exifObj.Make,
+            Model: exifObj.Model,
+            LensModel: exifObj.LensModel,
+            ExposureTime: exifObj.ExposureTime,
+            FNumber: exifObj.FNumber,
+            ISOSpeedRatings: exifObj.ISOSpeedRatings,
+            DateTimeOriginal: exifObj.DateTimeOriginal,
+            FocalLength: exifObj.FocalLength,
+            FocalLengthIn35mmFormat: exifObj.FocalLengthIn35mmFormat,
+          };
+        }
+        
+        
+        // 嘗試從檔案路徑中猜測資料夾名稱
+        const folderPath = file.webkitRelativePath.substring(0, file.webkitRelativePath.lastIndexOf('/')) || 'Selected Folder';
+
+        setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
+        
+        return {
+          id: `local-${file.name}-${file.lastModified}`,
+          source: 'local',
+          filename: file.name,
+          exif: processedExif,
+          folderPath: folderPath,
+        };
+      } catch (e) {
+        console.warn(`無法解析檔案 ${file.name} 的 EXIF`, e);
+        setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
+        return null;
+      }
+    });
+
+    const newPhotos = (await Promise.all(photoPromises)).filter(Boolean) as PhotoData[];
+
+    // 合併照片
+    setLocalPhotos(prevPhotos => {
+      const existingIds = new Set(prevPhotos.map(p => p.id));
+      const uniqueNewPhotos = newPhotos.filter(p => !existingIds.has(p.id));
+      const combinedPhotos = [...prevPhotos, ...uniqueNewPhotos];
+
+      const allPaths = Array.from(new Set(combinedPhotos.map(p => p.folderPath))).sort();
+      setAllFolderPaths(allPaths);
+
+      const newPaths = Array.from(new Set(uniqueNewPhotos.map(p => p.folderPath)));
+      setSelectedFolderPaths(prevSelected => Array.from(new Set([...prevSelected, ...newPaths])).sort());
+      
+      return combinedPhotos;
+    });
+
+    // 重設 input 的值，這樣使用者才能重複選擇同一個資料夾
+    if (event.target) {
+      event.target.value = '';
+    }
+    
+    setProgress({ loading: false, processed: 0, total: 0, message: '' });
+  };
   
   // [最終版本] 包含進度條與照片合併功能的完整函式
   const handleLocalFolderSelect = async () => {
-    setError('');
     
-    try {
-      // @ts-ignore
-      const dirHandle = await window.showDirectoryPicker();
-      
-      // --- 開始進度流程 ---
-      // 1. 進入讀取狀態，顯示計數訊息
-      setProgress({ loading: true, processed: 0, total: 0, message: '正在掃描檔案總數...' });
-
-      // 2. 執行第一步：快速計數
-      const totalFiles = await countFiles(dirHandle);
-      
-      if (totalFiles === 0) {
-        setError('在選擇的資料夾及其子資料夾中沒有找到符合條件的照片檔案。');
-        setProgress({ loading: false, processed: 0, total: 0, message: '' });
-        return;
-      }
-      
-      // 3. 更新狀態，顯示處理訊息和總數
-      setProgress({ loading: true, processed: 0, total: totalFiles, message: '正在解析照片 EXIF 資訊...' });
-      
-      // 4. 定義進度回報函式
-      const onProgressUpdate = () => {
-        // 使用函式形式更新 state，避免閉包問題
-        setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
-      };
-
-      // 5. 執行第二步：處理檔案，並傳入進度回報函式
-      const newPhotos = await processDirectory(dirHandle, dirHandle.name, onProgressUpdate);
-
-      // --- 6. 處理完成，合併新舊照片 ---
-      // 這裡就是您原本的合併邏輯，它被完整地保留了下來
-      setLocalPhotos(prevPhotos => {
-        // 簡單的去重邏輯，避免重複加入相同的照片
-        const existingIds = new Set(prevPhotos.map(p => p.id));
-        const uniqueNewPhotos = newPhotos.filter(p => !existingIds.has(p.id));
-        const combinedPhotos = [...prevPhotos, ...uniqueNewPhotos];
-
-        // 從合併後的照片中，提取出所有不重複的資料夾路徑
-        const allPaths = Array.from(new Set(combinedPhotos.map(p => p.folderPath))).sort();
-        setAllFolderPaths(allPaths);
-
-        // 預設將新加入的資料夾路徑也加入篩選列表
-        const newPaths = Array.from(new Set(uniqueNewPhotos.map(p => p.folderPath)));
-        setSelectedFolderPaths(prevSelected => Array.from(new Set([...prevSelected, ...newPaths])).sort());
+    if (window.showDirectoryPicker) {
+      // --- 這是原本的、基於新 API 的完整邏輯 ---
+      console.log("使用 File System Access API (新方法)");
+      setError('');
+      try {
+        // @ts-ignore
+        const dirHandle = await window.showDirectoryPicker();
         
-        return combinedPhotos;
-      });
+        setProgress({ loading: true, processed: 0, total: 0, message: '正在掃描檔案總數...' });
 
-    } catch (e) {
-      console.error(e);
-      if (e instanceof DOMException && e.name === 'AbortError') {
-        // 使用者取消選擇時，不要顯示錯誤，直接重置狀態
-        setError('');
-      } else {
-        setError('讀取本地資料夾失敗。');
+        const totalFiles = await countFiles(dirHandle);
+        
+        if (totalFiles === 0) {
+          setError('在選擇的資料夾及其子資料夾中沒有找到符合條件的照片檔案。');
+          setProgress({ loading: false, processed: 0, total: 0, message: '' });
+          return;
+        }
+        
+        setProgress({ loading: true, processed: 0, total: totalFiles, message: '正在解析照片 EXIF 資訊...' });
+        
+        const onProgressUpdate = () => {
+          setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
+        };
+
+        const newPhotos = await processDirectory(dirHandle, dirHandle.name, onProgressUpdate);
+
+        setLocalPhotos(prevPhotos => {
+          const existingIds = new Set(prevPhotos.map(p => p.id));
+          const uniqueNewPhotos = newPhotos.filter(p => !existingIds.has(p.id));
+          const combinedPhotos = [...prevPhotos, ...uniqueNewPhotos];
+
+          const allPaths = Array.from(new Set(combinedPhotos.map(p => p.folderPath))).sort();
+          setAllFolderPaths(allPaths);
+
+          const newPaths = Array.from(new Set(uniqueNewPhotos.map(p => p.folderPath)));
+          setSelectedFolderPaths(prevSelected => Array.from(new Set([...prevSelected, ...newPaths])).sort());
+          
+          return combinedPhotos;
+        });
+
+      } catch (e) {
+        console.error(e);
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          setError(''); // 使用者取消選擇時，不要顯示錯誤
+        } else {
+          setError('讀取本地資料夾失敗。');
+        }
+      } finally {
+        setProgress({ loading: false, processed: 0, total: 0, message: '' });
       }
-    } finally {
-      // --- 結束進度流程 ---
-      // 無論成功或失敗，最後都重置進度狀態
-      setProgress({ loading: false, processed: 0, total: 0, message: '' });
+    } else {
+      // --- 備用方案：觸發隱藏的 input ---
+      console.log("瀏覽器不支援，使用傳統 input (備用方案)");
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
     }
   };
 
@@ -508,6 +582,14 @@ function App() {
   // --- JSX 渲染 ---
   return (
     <div className="container">
+      <input
+        type="file"
+        webkitdirectory="true" // 關鍵屬性，允許選擇資料夾
+        ref={fileInputRef}
+        onChange={handleLegacyFolderSelect} // 指向新的處理函式
+        style={{ display: 'none' }} // 保持隱藏
+        multiple // 確保可以讀取多個檔案
+      />
       <h1>照片 EXIF 資訊統計器</h1>
       <div className="card">
         <button onClick={handleLocalFolderSelect} disabled={progress.loading}>
