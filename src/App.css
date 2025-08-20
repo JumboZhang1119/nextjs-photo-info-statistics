@@ -5,6 +5,13 @@ body {
   color: #1c1e21;
   margin: 0;
   padding: 20px;
+  justify-content: center;
+  display: flex;
+}
+
+#root {
+  width: 100%;
+  max-width: 1400px; /* 稍微加寬以容納側邊欄 */
 }
 
 .container {
@@ -203,4 +210,163 @@ button:hover:not(:disabled) {
 
 .chart-container {
   padding: 20px;
+}
+
+.main-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.content-area {
+  flex-grow: 1;
+}
+
+/* --- [Request 1] 側邊欄樣式 --- */
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+
+.sidebar-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100%;
+  max-width: 400px;
+  height: 100%;
+  background: #fff;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.15);
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+}
+
+.sidebar-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.filter-group {
+  margin-bottom: 20px;
+}
+
+.filter-group h4 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.filter-list, .crop-factor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-list label, .crop-factor-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.crop-factor-item {
+    justify-content: space-between;
+}
+
+.crop-factor-item .model-name {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 10px;
+}
+
+.crop-factor-input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: right;
+}
+
+/* --- [Request 2] 按鈕群組樣式 --- */
+.button-group {
+    display: inline-flex;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.button-group button {
+    background-color: #fff;
+    color: #007bff;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.button-group button:not(:last-child) {
+    border-right: 1px solid #007bff;
+}
+
+.button-group button.active {
+    background-color: #007bff;
+    color: #fff;
+}
+
+/* ... 其他樣式 ... */
+.card {
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  align-items: end;
+}
+
+.form-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
 }

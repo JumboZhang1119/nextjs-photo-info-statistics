@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react';
 import exifr from 'exifr';
 import { Bar } from 'react-chartjs-2';
+import { Sidebar } from './components/Sidebar';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,6 +12,8 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
+import { FilterSidebar } from './components/FilterSidebar';
 import './App.css';
 
 // 註冊 Chart.js 需要的元件
@@ -20,7 +23,8 @@ ChartJS.register(
   BarElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  ChartDataLabels
 );
 
 // 擴充後的 EXIF 資料結構
@@ -68,7 +72,8 @@ function App() {
   // --- 新增的狀態 ---
   // 1. 統計設定
   const [groupBy, setGroupBy] = useState<keyof ExifData>('Model'); // 預設依據相機型號統計
-  const [focalLengthRanges, setFocalLengthRanges] = useState('1-35, 36-70, 71-200, 201-800'); // 焦段區間設定
+  const [focalLengthMode, setFocalLengthMode] = useState<'range' | 'continuous'>('range'); 
+  const [focalLengthRanges, setFocalLengthRanges] = useState('1-23, 24-70, 71-105, 106-150, 151-200'); // 焦段區間設定
 
   // 2. 篩選器狀態
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
@@ -76,6 +81,23 @@ function App() {
   
   // 3. 圖表資料
   const [chartData, setChartData] = useState<ChartData | null>(null);
+
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
+
+  const [topFocalLengthLabels, setTopFocalLengthLabels] = useState<string[]>([]);
+
+  const [cropFactors, setCropFactors] = useState<{ [model: string]: number }>({
+    'ILCE-6400': 1.5,
+    'ILCE-7M4': 1.0,
+    'NIKON D7100': 1.5,
+    'Canon EOS M6': 1.6,
+    'Canon EOS 6D': 1.0,
+    'Canon EOS R50': 1.6,
+    'Canon EOS M6 Mark II': 1.0,
+    'X-T5': 1.5,
+    'iPhone 15 Pro Max': 7.0, // 範例：手機感光元件
+  });
+
 
   // --- 資料處理 ---
 
@@ -95,6 +117,15 @@ function App() {
 
 
   // --- 函式 ---
+
+  // [Request 1] 更新等效焦段倍率的函式
+  const handleCropFactorChange = (model: string, factorStr: string) => {
+    const factor = parseFloat(factorStr);
+    setCropFactors(prev => ({
+      ...prev,
+      [model]: isNaN(factor) || factor <= 0 ? 1.0 : factor,
+    }));
+  };
   
   const handleLocalFolderSelect = async () => {
     // ... (您現有的邏輯，但要修改輸出格式)
@@ -145,193 +176,237 @@ function App() {
     }
   };
 
+  // 取得等效焦段的輔助函式
+  const getEquivalentFocalLength = (photo: PhotoData): number | undefined => {
+    const { exif } = photo;
+    // 優先使用相機直接提供的等效焦段
+    if (typeof exif.FocalLengthIn35mmFormat === 'number' && exif.FocalLengthIn35mmFormat > 0) {
+      return exif.FocalLengthIn35mmFormat;
+    }
+    // 其次，如果使用者有設定換算比例，則手動計算
+    if (exif.Model && cropFactors[exif.Model] && typeof exif.FocalLength === 'number') {
+      return Math.round(exif.FocalLength * cropFactors[exif.Model]);
+    }
+    // 最後，回傳原始焦段 (當作全幅)
+    return exif.FocalLength;
+  }
+
   // 處理圖表生成
   const handleGenerateChart = () => {
-    // 1. 篩選照片
     const filteredPhotos = allPhotos.filter(photo => {
-      const { exif } = photo;
-      // 如果有選擇相機型號，但照片不符合，則過濾掉
-      if (selectedModels.length > 0 && !selectedModels.includes(exif.Model || '')) {
-        return false;
+      if (selectedModels.length > 0 && !selectedModels.includes(photo.exif.Model || '')) return false;
+      if (selectedLenses.length > 0) {
+        // 如果照片有 LensModel，就必須符合篩選條件
+        if (photo.exif.LensModel) {
+          if (!selectedLenses.includes(photo.exif.LensModel)) return false;
+        }
+        // 如果照片沒有 LensModel，就直接保留
       }
-      // 如果有選擇鏡頭型號，但照片不符合，則過濾掉
-      if (selectedLenses.length > 0 && !selectedLenses.includes(exif.LensModel || '')) {
-        return false;
-      }
-      // 可以繼續增加其他篩選條件，例如光圈、ISO...
       return true;
     });
 
-    // 2. 根據 groupBy 統計資料
     const counts: { [key: string]: number } = {};
+    let labels: string[] = [];
 
+    // --- 焦段統計邏輯 ---
     if (groupBy === 'FocalLength') {
-      // **特殊處理：焦段區間統計**
-      const ranges = focalLengthRanges.split(',').map(r => {
-        const [min, max] = r.trim().split('-').map(Number);
-        return { label: `${min}-${max}mm`, min, max };
-      });
-      const rangeLabels = ranges.map(r => r.label);
-      rangeLabels.forEach(l => counts[l] = 0); // 初始化
-      counts['其他'] = 0; // 未落入區間的
+      if (focalLengthMode === 'range') { // [Request 5] 區間模式
+        const ranges = focalLengthRanges.split(',').map(r => {
+          const [min, max] = r.trim().split('-').map(Number);
+          return { label: `${min}-${max}mm`, min, max };
+        });
+        labels = ranges.map(r => r.label); // [Request 7] 使用者定義的順序
+        labels.forEach(l => counts[l] = 0);
+        counts['其他'] = 0;
 
-      filteredPhotos.forEach(photo => {
-        const focalLength = photo.exif.FocalLength;
-        if (typeof focalLength === 'number') {
-          const foundRange = ranges.find(r => focalLength >= r.min && focalLength <= r.max);
-          if (foundRange) {
-            counts[foundRange.label]++;
-          } else {
-            counts['其他']++;
+        filteredPhotos.forEach(photo => {
+          const focalLength = getEquivalentFocalLength(photo); // [Request 3] 使用新函式
+          if (typeof focalLength === 'number') {
+            const foundRange = ranges.find(r => focalLength >= r.min && focalLength <= r.max);
+            if (foundRange) {
+              counts[foundRange.label]++;
+            } else {
+              counts['其他']++;
+            }
           }
+        });
+        if (counts['其他'] === 0) {
+            delete counts['其他'];
+            labels = labels.filter(l => l !== '其他');
         }
-      });
-      // 移除沒有照片的 "其他" 項目
-      if(counts['其他'] === 0) delete counts['其他'];
 
-    } else {
-      // **通用處理：根據屬性值統計**
-      filteredPhotos.forEach(photo => {
-        const key = (photo.exif[groupBy] as string) || '未知'; // 取得要統計的屬性值
-        counts[key] = (counts[key] || 0) + 1;
-      });
+      } else { // [Request 5] 連續直方圖模式
+          const focalLengths = filteredPhotos.map(getEquivalentFocalLength).filter(fl => typeof fl === 'number') as number[];
+          if(focalLengths.length === 0) {
+              setChartData(null);
+              return;
+          }
+          const minFl = Math.min(...focalLengths);
+          const maxFl = Math.max(...focalLengths);
+          
+          for (let i = minFl; i <= maxFl; i++) {
+              counts[i.toString()] = 0;
+          }
+          focalLengths.forEach(fl => {
+              counts[Math.round(fl).toString()]++;
+          });
+          labels = Object.keys(counts); // 依照焦段自然排序
+
+          const sortedByCount = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+          setTopFocalLengthLabels(sortedByCount.slice(0, 3));
+      }
+    } else { // --- 其他屬性統計邏輯 ---
+        filteredPhotos.forEach(photo => {
+            const key = (photo.exif[groupBy] as string) || 'Unknown';
+            counts[key] = (counts[key] || 0) + 1;
+        });
+        // 依照數量從多到少排序
+        labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+        setTopFocalLengthLabels([]);
     }
-
-    // 3. 轉換為 Chart.js 的資料格式
-    const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]); // 依照數量排序
+    
+    // --- 轉換為 Chart.js 資料格式 ---
     const data = labels.map(label => counts[label]);
-
-    // 產生隨機顏色
+    const total = data.reduce((sum, val) => sum + val, 0);
     const colors = data.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`);
 
     setChartData({
       labels,
-      datasets: [
-        {
-          label: `依 ${groupBy} 統計的照片張數`,
-          data,
-          backgroundColor: colors,
-          borderColor: colors.map(c => c.replace('0.6', '1')),
-          borderWidth: 1,
-        },
-      ],
+      datasets: [{
+        label: `依 ${groupBy} 統計的照片張數`,
+        data,
+        backgroundColor: colors,
+        borderColor: colors.map(c => c.replace('0.6', '1')),
+        borderWidth: 1,
+      }],
     });
   };
+
+  const isHorizontal = ['Model', 'LensModel'].includes(groupBy);
+  const activeFilterCount = selectedModels.length + selectedLenses.length;
 
   // --- JSX 渲染 ---
   return (
     <div className="container">
       <h1>照片 EXIF 資訊統計器</h1>
-      {error && <p className="error-message">{error}</p>}
-      {isLoading && <p className="loading-message">讀取中，請稍候...</p>}
-      
-      {/* --- 資料來源選擇 --- */}
-      <div className="card-row">
-        <div className="card">
-          <h2>1. 讀取本地資料夾</h2>
-          <button onClick={handleLocalFolderSelect} disabled={isLoading}>
-            選擇本地資料夾
+      <div className="card">
+        <button onClick={handleLocalFolderSelect} disabled={isLoading}>
+          {allPhotos.length > 0 ? '重新選擇/加入本地資料夾' : '選擇本地資料夾'}
+        </button>
+        {isLoading && <p>讀取中...</p>}
+        {error && <p className="error-message">{error}</p>}
+        {allPhotos.length > 0 && (
+          <button onClick={() => setSidebarOpen(true)} style={{ marginLeft: '10px' }}>
+            篩選與設定 {activeFilterCount > 0 && `(${activeFilterCount})`}
           </button>
-        </div>
-        <div className="card">
-          {/* Synology 的 UI 放在這裡 */}
-          <h2>(未來) 讀取 Synology Photos</h2>
-        </div>
+        )}
       </div>
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        availableModels={availableModels}
+        selectedModels={selectedModels}
+        onModelChange={setSelectedModels}
+        availableLenses={availableLenses}
+        selectedLenses={selectedLenses}
+        onLensChange={setSelectedLenses}
+        cropFactors={cropFactors}
+        onCropFactorChange={handleCropFactorChange}
+      />
 
       {allPhotos.length > 0 && (
-        <>
-        {/* --- 分析與統計區塊 --- */}
-        <div className="card">
-            <h2>📊 分析與統計 (共 {allPhotos.length} 張照片)</h2>
-            <div className="form-grid">
-              {/* 統計依據 */}
-              <div className="form-group">
-                <label>統計依據:</label>
-                <select value={groupBy} onChange={e => setGroupBy(e.target.value as keyof ExifData)}>
-                  <option value="Model">相機型號 (Camera Model)</option>
-                  <option value="LensModel">鏡頭型號 (Lens Model)</option>
-                  <option value="FocalLength">焦段 (Focal Length)</option>
-                  <option value="Make">相機廠牌 (Make)</option>
-                  <option value="FNumber">光圈 (F-Number)</option>
-                  {/* 可以繼續增加 */}
-                </select>
-              </div>
-
-              {/* 焦段區間設定 (只有在依焦段統計時顯示) */}
-              {groupBy === 'FocalLength' && (
+        <div className="main-layout">
+          <div className="content-area">
+            <div className="card">
+              <h2>分析與統計 (共 {allPhotos.length} 張照片)</h2>
+              <div className="form-grid">
                 <div className="form-group">
-                  <label>焦段區間 (以逗號分隔):</label>
-                  <input 
-                    type="text" 
-                    value={focalLengthRanges} 
-                    onChange={e => setFocalLengthRanges(e.target.value)}
-                    placeholder="例如: 1-35,36-70,71-200"
-                  />
+                  <label>統計依據:</label>
+                  <select value={groupBy} onChange={e => setGroupBy(e.target.value as keyof ExifData)}>
+                    <option value="Model">相機型號</option>
+                    <option value="LensModel">鏡頭型號</option>
+                    <option value="FocalLength">等效焦段</option>
+                    {/* ... 其他選項 */}
+                  </select>
                 </div>
-              )}
+                {groupBy === 'FocalLength' && (
+                  <div className="form-group">
+                    <label>焦段統計模式:</label>
+                    <div className="button-group">
+                      <button className={focalLengthMode === 'range' ? 'active' : ''} onClick={() => setFocalLengthMode('range')}>
+                        區間統計
+                      </button>
+                      <button className={focalLengthMode === 'continuous' ? 'active' : ''} onClick={() => setFocalLengthMode('continuous')}>
+                        連續直方圖
+                      </button>
+                    </div>
+                  </div>
+                  )}
+                {groupBy === 'FocalLength' && focalLengthMode === 'range' && (
+                  <div className="form-group">
+                    <label>焦段區間 (以逗號分隔):</label>
+                    <input type="text" value={focalLengthRanges} onChange={e => setFocalLengthRanges(e.target.value)} />
+                  </div>
+                )}
+              </div>
+              <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button>
             </div>
-
-            {/* 篩選器 */}
-            <h3>篩選條件</h3>
-            <div className="form-grid">
-               <div className="form-group checkbox-group">
-                  <label>相機型號:</label>
-                  {availableModels.map(model => (
-                    <label key={model}>
-                      <input type="checkbox" value={model} checked={selectedModels.includes(model)}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setSelectedModels([...selectedModels, model]);
-                          } else {
-                            setSelectedModels(selectedModels.filter(m => m !== model));
+            {chartData && (
+              <div className="card chart-container">
+                <h3>統計結果</h3>
+                <Bar 
+                  data={chartData} 
+                  options={{
+                    indexAxis: isHorizontal ? 'y' : 'x', // [Request 6] 動態設定圖表方向
+                    responsive: true,
+                    layout: {
+                      padding: {
+                        right: 40 // 調大一點，給標籤留空間
+                      }
+                    },
+                    plugins: {
+                      legend: { display: false },
+                      title: { display: true, text: chartData.datasets[0].label },
+                      // [Request 7] 設定百分比標籤
+                      datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        clip: false,
+                        formatter: (value, context) => {
+                          if (groupBy === 'FocalLength' && focalLengthMode === 'continuous') {
+                            const currentLabel = context.chart.data.labels?.[context.dataIndex] as string;
+                            if (!topFocalLengthLabels.includes(currentLabel)) {
+                              return null; // 如果不是前三名，不顯示標籤
+                            }
                           }
-                        }}
-                      /> {model}
-                    </label>
-                  ))}
-               </div>
-               <div className="form-group checkbox-group">
-                  <label>鏡頭型號:</label>
-                  {availableLenses.map(lens => (
-                    <label key={lens}>
-                      <input type="checkbox" value={lens} checked={selectedLenses.includes(lens)}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setSelectedLenses([...selectedLenses, lens]);
-                          } else {
-                            setSelectedLenses(selectedLenses.filter(l => l !== lens));
-                          }
-                        }}
-                      /> {lens}
-                    </label>
-                  ))}
-               </div>
-            </div>
-
-            <button onClick={handleGenerateChart} className="generate-button">
-              生成統計圖表
-            </button>
-        </div>
-
-        {/* --- 圖表顯示區塊 --- */}
-        {chartData && (
-          <div className="card chart-container">
-            <h3>統計結果</h3>
-            <Bar data={chartData} options={{ responsive: true, plugins: { legend: { display: false }, title: { display: true, text: chartData.datasets[0].label }}}} />
+                          const total = context.chart.data.datasets[0].data.reduce<number>(
+                              (sum, val) => sum + (Number(val) || 0),
+                              0
+                          );
+                          if (total === 0) return '0%';
+                          const percentage = ((value / total) * 100).toFixed(1) + '%';
+                          return `${value} (${percentage})`;
+                        },
+                        color: '#333',
+                        font: {
+                            weight: 'bold',
+                        }
+                      }
+                    },
+                    scales: { // [Request 6] 讓長標籤有足夠空間
+                        y: {
+                            ticks: {
+                                autoSkip: false
+                            }
+                        }
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
-        )}
-        </>
-      )}
-
-      {/* --- 原始資料預覽 (可選) --- */}
-      {/* {allPhotos.length > 0 && (
-        <div className="card">
-          <h2>原始 EXIF 結果預覽</h2>
-          <pre>{JSON.stringify(allPhotos.slice(0, 5), null, 2)}</pre>
         </div>
-      )} 
-      */}
+      )}
     </div>
   );
 }
