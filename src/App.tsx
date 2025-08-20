@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import exifr from 'exifr';
 import { Bar } from 'react-chartjs-2';
 import { Sidebar } from './components/Sidebar';
+import { defaultCropFactors, type CropFactorMap } from './cameraData'; 
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -46,6 +47,7 @@ interface PhotoData {
   source: 'local' | 'synology';
   filename: string;
   exif: ExifData;
+  folderPath: string; // e.g., "旅遊照片/2024-日本"
 }
 
 // 圖表資料的結構
@@ -78,6 +80,10 @@ function App() {
   // 2. 篩選器狀態
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [selectedLenses, setSelectedLenses] = useState<string[]>([]);
+
+  // [新增] 資料夾篩選相關狀態
+  const [allFolderPaths, setAllFolderPaths] = useState<string[]>([]); // 儲存所有讀取到的資料夾路徑
+  const [selectedFolderPaths, setSelectedFolderPaths] = useState<string[]>([]); // 儲存使用者勾選要分析的資料夾
   
   // 3. 圖表資料
   const [chartData, setChartData] = useState<ChartData | null>(null);
@@ -86,17 +92,7 @@ function App() {
 
   const [topFocalLengthLabels, setTopFocalLengthLabels] = useState<string[]>([]);
 
-  const [cropFactors, setCropFactors] = useState<{ [model: string]: number }>({
-    'ILCE-6400': 1.5,
-    'ILCE-7M4': 1.0,
-    'NIKON D7100': 1.5,
-    'Canon EOS M6': 1.6,
-    'Canon EOS 6D': 1.0,
-    'Canon EOS R50': 1.6,
-    'Canon EOS M6 Mark II': 1.0,
-    'X-T5': 1.5,
-    'iPhone 15 Pro Max': 7.0, // 範例：手機感光元件
-  });
+  const [cropFactors, setCropFactors] = useState<CropFactorMap>(defaultCropFactors);
 
 
   // --- 資料處理 ---
@@ -126,55 +122,92 @@ function App() {
       [model]: isNaN(factor) || factor <= 0 ? 1.0 : factor,
     }));
   };
+
+  // [新增] 遞迴讀取資料夾內容的輔助函式
+  const processDirectory = async (dirHandle: FileSystemDirectoryHandle, currentPath: string): Promise<PhotoData[]> => {
+    const photoResults: PhotoData[] = [];
+    const imageRegex = /\.(jpe?g|heic|cr3|arw)$/i; // 簡化判斷式
+
+    for await (const entry of dirHandle.values()) {
+      const entryPath = `${currentPath}/${entry.name}`;
+      if (entry.kind === 'file' && imageRegex.test(entry.name)) {
+        const file = await entry.getFile();
+        try {
+          const exifObj = await exifr.parse(file);
+          let processedExif: ExifData = {};
+          if (exifObj) {
+            processedExif = {
+              Make: exifObj.Make,  
+              Model: exifObj.Model,
+              LensModel: exifObj.LensModel,
+              ExposureTime: exifObj.ExposureTime,
+              FNumber: exifObj.FNumber,
+              ISOSpeedRatings: exifObj.ISOSpeedRatings,
+              DateTimeOriginal: exifObj.DateTimeOriginal,
+              FocalLength: exifObj.FocalLength,
+              FocalLengthIn35mmFormat: exifObj.FocalLengthIn35mmFormat,
+            };
+          }
+          photoResults.push({
+            id: `local-${file.name}-${file.lastModified}`,
+            source: 'local',
+            filename: file.name,
+            exif: processedExif,
+            folderPath: currentPath, // [修改] 記錄檔案所在的資料夾路徑
+          });
+        } catch (e) {
+          console.warn(`無法解析檔案 ${file.name} 的 EXIF`, e);
+        }
+      } else if (entry.kind === 'directory') {
+        // 如果是資料夾，就遞迴呼叫自己，並將結果合併
+        const subFolderPhotos = await processDirectory(entry, entryPath);
+        photoResults.push(...subFolderPhotos);
+      }
+    }
+    return photoResults;
+  };
   
   const handleLocalFolderSelect = async () => {
-    // ... (您現有的邏輯，但要修改輸出格式)
     setError('');
-    setLocalPhotos([]); // 改成 setLocalPhotos
+    // setLocalPhotos([]); // [修改] 不再清空，改為累加
     setIsLoading(true);
     try {
         // @ts-ignore
         const dirHandle = await window.showDirectoryPicker();
-        const photoResults: PhotoData[] = [];
+        
+        // [修改] 呼叫新的遞迴函式
+        const newPhotos = await processDirectory(dirHandle, dirHandle.name);
 
-        for await (const entry of dirHandle.values()) {
-            if (entry.kind === 'file' && (entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.jpeg') || entry.name.toLowerCase().endsWith('.heic') || entry.name.toLowerCase().endsWith('.cr3') || entry.name.toLowerCase().endsWith('.arw'))) {
-                const file = await entry.getFile();
-                try {
-                    const exifObj = await exifr.parse(file);
-                    let processedExif: ExifData = {};
-                    if (exifObj) {
-                        processedExif = {
-                            Make: exifObj.Make,
-                            Model: exifObj.Model,
-                            LensModel: exifObj.LensModel,
-                            ExposureTime: exifObj.ExposureTime,
-                            FNumber: exifObj.FNumber,
-                            ISOSpeedRatings: exifObj.ISOSpeedRatings,
-                            DateTimeOriginal: exifObj.DateTimeOriginal,
-                            FocalLength: exifObj.FocalLength,
-                            FocalLengthIn35mmFormat: exifObj.FocalLengthIn35mmFormat,
-                        };
-                    }
-                    photoResults.push({
-                      id: `local-${file.name}-${file.lastModified}`,
-                      source: 'local',
-                      filename: file.name,
-                      exif: processedExif
-                    });
-                } catch (e) {
-                    console.warn(`無法解析檔案 ${file.name} 的 EXIF`, e);
-                }
-            }
-        }
-        setLocalPhotos(photoResults); // 改成 setLocalPhotos
+        // [修改] 合併新舊照片，並更新資料夾列表
+        setLocalPhotos(prevPhotos => {
+          // 簡單的去重邏輯，避免重複加入相同的照片
+          const existingIds = new Set(prevPhotos.map(p => p.id));
+          const uniqueNewPhotos = newPhotos.filter(p => !existingIds.has(p.id));
+          const combinedPhotos = [...prevPhotos, ...uniqueNewPhotos];
+
+          // 從合併後的照片中，提取出所有不重複的資料夾路徑
+          const allPaths = Array.from(new Set(combinedPhotos.map(p => p.folderPath))).sort();
+          setAllFolderPaths(allPaths);
+
+          // 預設將新加入的資料夾路徑也加入篩選列表
+          const newPaths = Array.from(new Set(uniqueNewPhotos.map(p => p.folderPath)));
+          setSelectedFolderPaths(prevSelected => Array.from(new Set([...prevSelected, ...newPaths])).sort());
+          
+          return combinedPhotos;
+        });
+
     } catch (e) {
         console.error(e);
-        setError('讀取本地資料夾失敗。');
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          setError('使用者取消選擇。');
+        } else {
+          setError('讀取本地資料夾失敗。');
+        }
     } finally {
         setIsLoading(false);
     }
   };
+
 
   // 取得等效焦段的輔助函式
   const getEquivalentFocalLength = (photo: PhotoData): number | undefined => {
@@ -193,14 +226,15 @@ function App() {
 
   // 處理圖表生成
   const handleGenerateChart = () => {
-    const filteredPhotos = allPhotos.filter(photo => {
+    const photosFromSelectedFolders = allPhotos.filter(photo =>
+      selectedFolderPaths.includes(photo.folderPath)
+    );
+    const filteredPhotos = photosFromSelectedFolders.filter(photo => {
       if (selectedModels.length > 0 && !selectedModels.includes(photo.exif.Model || '')) return false;
       if (selectedLenses.length > 0) {
-        // 如果照片有 LensModel，就必須符合篩選條件
         if (photo.exif.LensModel) {
           if (!selectedLenses.includes(photo.exif.LensModel)) return false;
         }
-        // 如果照片沒有 LensModel，就直接保留
       }
       return true;
     });
@@ -283,7 +317,7 @@ function App() {
   };
 
   const isHorizontal = ['Model', 'LensModel'].includes(groupBy);
-  const activeFilterCount = selectedModels.length + selectedLenses.length;
+  const activeFilterCount = selectedModels.length + selectedLenses.length + selectedFolderPaths.length;
 
   // --- JSX 渲染 ---
   return (
@@ -304,6 +338,9 @@ function App() {
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        availableFolders={allFolderPaths}
+        selectedFolders={selectedFolderPaths}
+        onFolderChange={setSelectedFolderPaths}
         availableModels={availableModels}
         selectedModels={selectedModels}
         onModelChange={setSelectedModels}
@@ -319,38 +356,61 @@ function App() {
           <div className="content-area">
             <div className="card">
               <h2>分析與統計 (共 {allPhotos.length} 張照片)</h2>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>統計依據:</label>
-                  <select value={groupBy} onChange={e => setGroupBy(e.target.value as keyof ExifData)}>
-                    <option value="Model">相機型號</option>
-                    <option value="LensModel">鏡頭型號</option>
-                    <option value="FocalLength">等效焦段</option>
-                    {/* ... 其他選項 */}
-                  </select>
-                </div>
-                {groupBy === 'FocalLength' && (
+              <div className="form-group form-group-full-width">
+                <label>統計依據:</label>
+                <select value={groupBy} onChange={e => setGroupBy(e.target.value as keyof ExifData)}>
+                  <option value="Model">相機型號</option>
+                  <option value="LensModel">鏡頭型號</option>
+                  <option value="FocalLength">等效焦段</option>
+                  {/* ... 其他選項 ... */}
+                </select>
+              </div>
+              {groupBy !== 'FocalLength' && (
+                <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button>
+              )}
+              {/* <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button> */}
+            </div>
+            
+            {groupBy === 'FocalLength' && (
+              <div className="card focal-options-card">
+                <h3>焦段設定</h3>
+                <div className="focal-options-grid">
                   <div className="form-group">
-                    <label>焦段統計模式:</label>
+                    <label>統計模式:</label>
                     <div className="button-group">
-                      <button className={focalLengthMode === 'range' ? 'active' : ''} onClick={() => setFocalLengthMode('range')}>
-                        區間統計
+                      <button 
+                        className={focalLengthMode === 'range' ? 'active' : ''} 
+                        onClick={() => setFocalLengthMode('range')}
+                      >
+                        <span className="icon"></span> 區間統計
                       </button>
-                      <button className={focalLengthMode === 'continuous' ? 'active' : ''} onClick={() => setFocalLengthMode('continuous')}>
-                        連續直方圖
+                      <button 
+                        className={focalLengthMode === 'continuous' ? 'active' : ''} 
+                        onClick={() => setFocalLengthMode('continuous')}
+                      >
+                        <span className="icon"></span> 連續直方圖
                       </button>
                     </div>
                   </div>
+                  
+                  {/* 只有在 "區間統計" 模式下才顯示 */}
+                  {focalLengthMode === 'range' && (
+                    <div className="form-group">
+                      <label>焦段區間 (以`,`分隔):</label>
+                      <input 
+                        type="text" 
+                        value={focalLengthRanges} 
+                        onChange={e => setFocalLengthRanges(e.target.value)} 
+                        placeholder="例如: 24-70, 70-200, 200-500"
+                      />
+                      {/* <small className="helper-text">請使用 `-` 連接區間，並用 `,` 分隔每組。</small> */}
+                    </div>
                   )}
-                {groupBy === 'FocalLength' && focalLengthMode === 'range' && (
-                  <div className="form-group">
-                    <label>焦段區間 (以逗號分隔):</label>
-                    <input type="text" value={focalLengthRanges} onChange={e => setFocalLengthRanges(e.target.value)} />
-                  </div>
-                )}
+                </div>
+                <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button>
               </div>
-              <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button>
-            </div>
+            )}
+
             {chartData && (
               <div className="card chart-container">
                 <h3>統計結果</h3>

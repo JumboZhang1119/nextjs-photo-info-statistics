@@ -324,10 +324,8 @@ button:hover:not(:disabled) {
 
 /* --- [Request 2] 按鈕群組樣式 --- */
 .button-group {
-    display: inline-flex;
-    border: 1px solid #007bff;
-    border-radius: 4px;
-    overflow: hidden;
+  display: flex; /* 使用 Flexbox 佈局 */
+  gap: 0.75rem;    /* 設定按鈕之間的間距，讓它們各自獨立 */
 }
 
 .button-group button {
@@ -369,4 +367,91 @@ button:hover:not(:disabled) {
   display: block;
   font-weight: bold;
   margin-bottom: 5px;
+}
+
+/* --- 版面調整與新增樣式 (更新版本) --- */
+
+/* 讓指定 form-group 獨佔一行 */
+.form-group-full-width {
+  grid-column: 1 / -1; /* For CSS Grid layouts */
+  width: 100%;
+}
+
+/* 焦段設定專用卡片的樣式 */
+.focal-options-card {
+  margin-top: 1.5rem;
+  border-left: 4px solid #4a90e2;
+}
+
+.focal-options-card h3 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+/* [修改] 焦段設定卡片內的佈局：從 Grid 改為 Flexbox */
+.focal-options-grid {
+  display: flex;
+  flex-wrap: wrap;      /* 在螢幕空間不足時允許換行 */
+  align-items: flex-start; /* 頂部對齊 */
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* [新增] 讓焦段區間的區塊自動填滿剩餘空間 */
+.focal-options-grid > .form-group {
+  flex-shrink: 0; /* 防止按鈕組被壓縮 */
+}
+.focal-options-grid > .form-group:last-child {
+  flex-grow: 1; /* 讓最後一個元素 (焦段區間輸入框) 填滿剩餘空間 */
+  min-width: 250px; /* 確保輸入框有足夠的最小寬度 */
+}
+
+
+/* 美化統計模式的按鈕組 */
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.button-group button {
+  /* [移除] flex-grow: 1; 這一行是關鍵，移除後按鈕就不會自動伸展了 */
+  padding: 0.75rem 1.25rem; /* 微調 padding 讓按鈕寬度固定 */
+  border: 1px solid #ddd;
+  background-color: #f9f9f9;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap; /* 防止按鈕文字換行 */
+}
+
+.button-group button .icon {
+  display: inline-block;
+}
+
+.button-group button:hover {
+  background-color: #f0f0f0;
+  border-color: #ccc;
+}
+
+/* "啟用中" 按鈕的樣式 */
+.button-group button.active {
+  background-color: #4a90e2;
+  color: white;
+  border-color: #357ABD;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 美化輸入框下方的提示文字 */
+.helper-text {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #666;
 }

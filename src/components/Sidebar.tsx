@@ -22,7 +22,7 @@ const FilterGroup: React.FC<{
       <div className="filter-list">
         <label>
           <input type="checkbox" checked={isAllSelected} onChange={handleSelectAll} />
-          <strong>(全部選取/取消)</strong>
+          <strong>(全選/取消)</strong>
         </label>
         {items.map(item => (
           <label key={item}>
@@ -39,6 +39,9 @@ const FilterGroup: React.FC<{
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  availableFolders: string[];
+  selectedFolders: string[];
+  onFolderChange: (selected: string[]) => void;
   availableModels: string[];
   selectedModels: string[];
   onModelChange: (selected: string[]) => void;
@@ -51,6 +54,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen, onClose,
+  availableFolders, selectedFolders, onFolderChange,
   availableModels, selectedModels, onModelChange,
   availableLenses, selectedLenses, onLensChange,
   cropFactors, onCropFactorChange
@@ -64,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button onClick={onClose}>關閉</button>
         </div>
         <div className="sidebar-content">
+          <FilterGroup title="資料夾" items={availableFolders} selectedItems={selectedFolders} onChange={onFolderChange} />
           <FilterGroup title="相機型號" items={availableModels} selectedItems={selectedModels} onChange={onModelChange} />
           <FilterGroup title="鏡頭型號" items={availableLenses} selectedItems={selectedLenses} onChange={onLensChange} />
 
