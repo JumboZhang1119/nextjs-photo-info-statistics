@@ -13,7 +13,7 @@ import {
   Legend,
 } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
-import { FilterSidebar } from './components/FilterSidebar';
+// import { FilterSidebar } from './components/FilterSidebar';
 import './App.css';
 
 // 註冊 Chart.js 需要的元件
@@ -64,7 +64,7 @@ interface ChartData {
 function App() {
   // --- 現有狀態 ---
   const [localPhotos, setLocalPhotos] = useState<PhotoData[]>([]);
-  const [synoPhotos, setSynoPhotos] = useState<PhotoData[]>([]); // Synology 的部分先保持結構一致
+  // const [synoPhotos, setSynoPhotos] = useState<PhotoData[]>([]); // Synology 的部分先保持結構一致
   // ... (Synology 相關狀態)
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -102,7 +102,7 @@ function App() {
   // --- 資料處理 ---
 
   // 使用 useMemo 合併本地與 Synology 的照片，避免不必要的重複計算
-  const allPhotos = useMemo(() => [...localPhotos, ...synoPhotos], [localPhotos, synoPhotos]);
+  const allPhotos = useMemo(() => [...localPhotos], [localPhotos]);
 
   // 使用 useMemo 動態產生篩選選項
   const availableModels = useMemo(() => {
@@ -267,7 +267,7 @@ function App() {
     
     // --- 轉換為 Chart.js 資料格式 ---
     const data = labels.map(label => counts[label]);
-    const total = data.reduce((sum, val) => sum + val, 0);
+    // const total = data.reduce((sum, val) => sum + val, 0);
     const colors = data.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`);
 
     setChartData({
