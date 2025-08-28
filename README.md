@@ -1,69 +1,36 @@
-# React + TypeScript + Vite
+# Photo EXIF Statistics
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A web-based tool for analyzing and visualizing the EXIF data from your photo collection.
 
-Currently, two official plugins are available:
+[**Website**](https://photo-info-statistics.vercel.app) 
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+<img width="1314" height="262" alt="截圖 2025-08-29 凌晨1 24 21" src="https://github.com/user-attachments/assets/94fe8841-6976-4634-b339-dd57cd3edb7e" />
 
-## Expanding the ESLint configuration
+### Privacy Statement
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Your privacy is paramount. All statistical analysis is performed **entirely within your local browser**. No photo data or EXIF information is ever uploaded to or stored on any server.
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+For the best experience and full functionality (including local folder access via the File System Access API), using a modern Chromium-based browser like **Google Chrome** or **Microsoft Edge** is recommended.
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### Features
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+This tool allows you to gain insights into your photography habits through several key analyses:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+-   **Flexible Filtering & Configuration**
+    -   Select specific folders, camera bodies, and lenses to include in the analysis.
+    -   Fine-tune your statistics by setting custom crop factors for each camera model (e.g., APS-C: 1.5x/1.6x, Full Frame: 1.0x) to ensure accurate equivalent focal length calculations.
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+-   **Analyze by Camera Model**
+    -   Visualize the number of photos taken with each of your camera bodies.
+
+-   **Analyze by Lens Model**
+    -   Get a clear breakdown of which lenses you use the most.
+
+-   **Analyze by Focal Length**
+    -   Generate powerful statistics based on the equivalent focal length (35mm equivalent) of your shots, with two distinct modes:
+        -   **Custom Ranges:** Define your own focal length brackets (e.g., 24-70mm, 70-200mm, 300mm+) to see the distribution and percentage of photos in each user-defined range.
+        -   **Histogram View:** Display a detailed chart showing the photo count for every individual focal length used across your collection.
+     
+<img width="1454" height="845" alt="截圖 2025-08-29 凌晨1 30 20" src="https://github.com/user-attachments/assets/7334a851-a949-4f32-aec9-90a0c41667b3" />
