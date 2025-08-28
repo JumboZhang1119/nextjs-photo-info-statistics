@@ -1,7 +1,7 @@
 // src/components/Sidebar.tsx
 import React from 'react';
 
-// 通用的篩選群組元件 (含 "All" 選項)
+// A reusable component for filter groups
 const FilterGroup: React.FC<{
   title: string;
   items: string[];
@@ -15,7 +15,7 @@ const FilterGroup: React.FC<{
     onChange(checked ? [...selectedItems, item] : selectedItems.filter(i => i !== item));
   };
   const isAllSelected = items.length > 0 && selectedItems.length === items.length;
-
+  // Render the filter group UI
   return (
     <div className="filter-group">
       <h4>{title}</h4>
@@ -35,7 +35,7 @@ const FilterGroup: React.FC<{
   );
 };
 
-// Sidebar 元件的 Props 型別
+// Define the props for the Sidebar component
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
@@ -52,6 +52,7 @@ interface SidebarProps {
   onCropFactorChange: (model: string, factor: string) => void;
 }
 
+// The main Sidebar component
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen, onClose,
   availableFolders, selectedFolders, onFolderChange,
@@ -71,8 +72,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <FilterGroup title="資料夾" items={availableFolders} selectedItems={selectedFolders} onChange={onFolderChange} />
           <FilterGroup title="相機型號" items={availableModels} selectedItems={selectedModels} onChange={onModelChange} />
           <FilterGroup title="鏡頭型號" items={availableLenses} selectedItems={selectedLenses} onChange={onLensChange} />
-
-          {/* [Request 1] 等效焦段倍率設定 */}
           <div className="filter-group">
             <h4>相機等效焦段倍率</h4>
             <div className="crop-factor-list">

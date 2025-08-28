@@ -3,7 +3,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import fetch from 'node-fetch';
 
-// --- 定義我們期望的 API 回應類型 ---
+// Define TypeScript interfaces for the expected response structures
 interface SynologyAuthResponse {
   success: boolean;
   data: {
@@ -14,11 +14,12 @@ interface SynologyAuthResponse {
   }
 }
 
+// Define the structure of items returned by the Synology API
 interface SynologyItem {
   id: number;
   filename: string;
   additional?: {
-    exif?: Record<string, any>; // EXIF 的內容比較複雜，先用 Record<string, any>
+    exif?: Record<string, any>;
   };
 }
 
@@ -28,11 +29,11 @@ interface SynologyItemResponse {
     list: SynologyItem[];
   };
 }
-// ------------------------------------
 
 const AUTH_API_PATH = '/webapi/auth.cgi';
 const ITEM_API_PATH = '/webapi/entry.cgi';
 
+// Main handler function for the Vercel serverless function
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,
@@ -52,7 +53,7 @@ export default async function handler(
   try {
     const authUrl = `${host}${AUTH_API_PATH}?api=SYNO.API.Auth&version=7&method=login&account=${encodeURIComponent(account)}&passwd=${encodeURIComponent(password)}&session=FileStation&format=sid`;
     const authResponse = await fetch(authUrl);
-    // 告訴 TypeScript 我們預期 authData 是 SynologyAuthResponse 類型
+    // Parse the authentication response
     const authData = (await authResponse.json()) as SynologyAuthResponse;
 
     if (!authData.success || !authData.data.sid) {
@@ -60,10 +61,10 @@ export default async function handler(
       throw new Error('Synology 登入失敗，請檢查主機位址與帳號密碼。');
     }
     sid = authData.data.sid;
-
+    // Fetch the items in the specified album
     const itemUrl = `${host}${ITEM_API_PATH}?api=SYNO.Foto.Browse.Item&version=1&method=list&album_id=${albumId}&limit=100&additional=["exif"]&_sid=${sid}`;
     const itemResponse = await fetch(itemUrl);
-    // 告訴 TypeScript 我們預期 itemData 是 SynologyItemResponse 類型
+
     const itemData = (await itemResponse.json()) as SynologyItemResponse;
 
     if (!itemData.success) {

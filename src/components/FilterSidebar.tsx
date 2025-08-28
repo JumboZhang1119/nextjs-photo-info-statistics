@@ -1,7 +1,7 @@
 // src/components/FilterSidebar.tsx
 import React from 'react';
 
-// 定義傳入的 props 型別
+// Define the props for the FilterSidebar component
 interface FilterSidebarProps {
   availableModels: string[];
   selectedModels: string[];
@@ -11,18 +11,18 @@ interface FilterSidebarProps {
   onLensChange: (selected: string[]) => void;
 }
 
-// 通用的篩選群組元件，包含 "All" 選項
+// A reusable component for filter groups
 const FilterGroup: React.FC<{
   title: string;
   items: string[];
   selectedItems: string[];
   onChange: (selected: string[]) => void;
 }> = ({ title, items, selectedItems, onChange }) => {
-  
+  // Handle select all toggle
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange(e.target.checked ? items : []);
   };
-
+  // Handle individual item toggle
   const handleItemChange = (item: string, checked: boolean) => {
     if (checked) {
       onChange([...selectedItems, item]);
@@ -30,14 +30,13 @@ const FilterGroup: React.FC<{
       onChange(selectedItems.filter(i => i !== item));
     }
   };
-  
+  // Determine if all items are selected
   const isAllSelected = items.length > 0 && selectedItems.length === items.length;
 
   return (
     <div className="filter-group">
       <h4>{title}</h4>
       <div className="filter-list">
-        {/* [Request 2] "All" 選項 */}
         <label>
           <input
             type="checkbox"
@@ -61,7 +60,7 @@ const FilterGroup: React.FC<{
   );
 };
 
-
+// The main FilterSidebar component
 export const FilterSidebar: React.FC<FilterSidebarProps> = ({
   availableModels,
   selectedModels,
@@ -85,7 +84,6 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         selectedItems={selectedLenses}
         onChange={onLensChange}
       />
-      {/* 未來可以繼續增加其他篩選器，例如 ISO, 光圈等 */}
     </aside>
   );
 };

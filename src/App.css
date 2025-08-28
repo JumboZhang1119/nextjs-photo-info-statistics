@@ -1,6 +1,5 @@
 /* src/App.css */
 
-/* --- 全域與基本樣式 --- */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: #f0f2f5;
@@ -21,9 +20,8 @@ h1 {
   color: #333;
 }
 
-/* --- 佈局容器 --- */
 .container {
-  max-width: 1200px; /* 保留較寬的版本 */
+  max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -38,7 +36,6 @@ h1 {
   flex-grow: 1;
 }
 
-/* --- 卡片元件 (已整合) --- */
 .card {
   background: #ffffff;
   border: 1px solid #ddd;
@@ -52,7 +49,6 @@ h1 {
   padding: 20px;
 }
 
-/* --- 表單與輸入元件 (已整合) --- */
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -86,7 +82,6 @@ h1 {
   color: #666;
 }
 
-/* --- 全域按鈕基礎樣式 (已整合) --- */
 button {
   background-color: #007bff;
   color: white;
@@ -107,7 +102,6 @@ button:hover:not(:disabled) {
   background-color: #0056b3;
 }
 
-/* --- 側邊欄樣式 --- */
 .sidebar-overlay {
   position: fixed;
   top: 0;
@@ -197,7 +191,6 @@ button:hover:not(:disabled) {
   text-align: right;
 }
 
-/* --- 焦段選項區塊專用樣式 --- */
 .form-group-full-width {
   grid-column: 1 / -1;
   width: 100%;
@@ -231,8 +224,6 @@ button:hover:not(:disabled) {
   min-width: 250px;
 }
 
-/* --- 全新的、獨立式按鈕群組樣式 (最終版) --- */
-/* 這是焦段模式切換按鈕的專用樣式，已取代所有舊的 .button-group 規則 */
 .button-group {
   display: flex;
   gap: 0.75rem;
@@ -241,7 +232,6 @@ button:hover:not(:disabled) {
 .button-group button {
   -webkit-appearance: none;
   appearance: none;
-
   border: 1px solid #ccc;
   border-radius: 6px ;
   background-color: #fff;
@@ -287,7 +277,6 @@ button:hover:not(:disabled) {
   outline-offset: 2px;
 }
 
-/* --- 讓焦段區間輸入框與按鈕等高 --- */
 .focal-options-card input[type="text"] {
   -webkit-appearance: none;
   appearance: none;
@@ -310,7 +299,6 @@ button:hover:not(:disabled) {
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
 }
 
-/* --- 狀態訊息 --- */
 .error-message {
   color: #d93025;
   background-color: #f8d7da;
@@ -345,7 +333,6 @@ button:hover:not(:disabled) {
   border: 1px solid #ccc;
 }
 
-/* Chrome, Safari, Edge 的進度條顏色 */
 .progress-container progress::-webkit-progress-bar {
   background-color: #e9ecef;
 }
@@ -354,7 +341,6 @@ button:hover:not(:disabled) {
   transition: width 0.2s ease-in-out;
 }
 
-/* Firefox 的進度條顏色 */
 .progress-container progress::-moz-progress-bar {
   background-color: #007bff;
 }

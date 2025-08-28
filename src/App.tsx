@@ -14,10 +14,9 @@ import {
   Legend,
 } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
-// import { FilterSidebar } from './components/FilterSidebar';
 import './App.css';
 
-// 註冊 Chart.js 需要的元件
+// Register Chart.js components and plugins
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -28,7 +27,7 @@ ChartJS.register(
   ChartDataLabels
 );
 
-// 擴充後的 EXIF 資料結構
+// Define TypeScript interfaces for EXIF data and photo structure
 interface ExifData {
   Make?: string;
   Model?: string;
@@ -47,16 +46,16 @@ type ParsedRange = {
   test: (fl: number) => boolean;
 };
 
-// 照片的完整資料結構
+// Define the structure for photo data
 interface PhotoData {
   id: string;
   source: 'local' | 'synology';
   filename: string;
   exif: ExifData;
-  folderPath: string; // e.g., "旅遊照片/2024-日本"
+  folderPath: string;
 }
 
-// 圖表資料的結構
+// Define the structure for chart data
 interface ChartData {
   labels: string[];
   datasets: {
@@ -68,116 +67,91 @@ interface ChartData {
   }[];
 }
 
-
+// Define the type for crop factors
 function App() {
-  // --- 現有狀態 ---
   const [localPhotos, setLocalPhotos] = useState<PhotoData[]>([]);
-  // const [synoPhotos, setSynoPhotos] = useState<PhotoData[]>([]); // Synology 的部分先保持結構一致
-  // ... (Synology 相關狀態)
   const [progress, setProgress] = useState({
-    loading: false, // 是否正在讀取
-    total: 0,       // 總檔案數
-    processed: 0,   // 已處理檔案數
-    message: '',    // 顯示的訊息
+    loading: false,
+    total: 0,       
+    processed: 0,   
+    message: '',    
   });
+  // Error message state
   const [error, setError] = useState('');
-
-  // --- 新增的狀態 ---
-  // 1. 統計設定
-  const [groupBy, setGroupBy] = useState<keyof ExifData>('Model'); // 預設依據相機型號統計
+  // Filter and grouping states
+  const [groupBy, setGroupBy] = useState<keyof ExifData>('Model'); 
   const [focalLengthMode, setFocalLengthMode] = useState<'range' | 'continuous'>('range'); 
-  const [focalLengthRanges, setFocalLengthRanges] = useState('14-23, 24-70, 70-200, other'); // 焦段區間設定
-
-  // 2. 篩選器狀態
+  const [focalLengthRanges, setFocalLengthRanges] = useState('14-23, 24-70, 70-200, other'); 
+  // Selected filters
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [selectedLenses, setSelectedLenses] = useState<string[]>([]);
-
-  // [新增] 資料夾篩選相關狀態
-  const [allFolderPaths, setAllFolderPaths] = useState<string[]>([]); // 儲存所有讀取到的資料夾路徑
-  const [selectedFolderPaths, setSelectedFolderPaths] = useState<string[]>([]); // 儲存使用者勾選要分析的資料夾
-  
-  // 3. 圖表資料
+  // Folder paths
+  const [allFolderPaths, setAllFolderPaths] = useState<string[]>([]);
+  const [selectedFolderPaths, setSelectedFolderPaths] = useState<string[]>([]);
+  // Chart data state
   const [chartData, setChartData] = useState<ChartData | null>(null);
-
+  // Sidebar visibility state
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-
+  // Top focal length labels for highlighting
   const [topFocalLengthLabels, setTopFocalLengthLabels] = useState<string[]>([]);
-
+  // Crop factors state
   const [cropFactors, setCropFactors] = useState<CropFactorMap>(defaultCropFactors);
-
+  // Debounced focal length ranges for performance
   const [debouncedFocalLengthRanges, setDebouncedFocalLengthRanges] = useState(focalLengthRanges);
-
+  // Mapping for group by labels
   const GROUP_BY_LABELS: { [key: string]: string } = {
     Model: '相機型號',
     LensModel: '鏡頭型號',
     FocalLength: '等效焦段',
-    // 如果未來新增其他統計依據，也一併加到這裡
-    // Make: '相機廠牌',
-    // FNumber: '光圈值',
   };
-
+  // Reference for hidden file input (legacy folder selection)
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // --- 資料處理 ---
-
-  // 使用 useMemo 合併本地與 Synology 的照片，避免不必要的重複計算
+  // Combine all photos for easier processing
   const allPhotos = useMemo(() => [...localPhotos], [localPhotos]);
-
-  // 使用 useMemo 動態產生篩選選項
+  // Compute available models and lenses from the photos
   const availableModels = useMemo(() => {
     const models = new Set(allPhotos.map(p => p.exif.Model).filter(Boolean));
     return Array.from(models).sort() as string[];
   }, [allPhotos]);
-
+  // Compute available lenses from the photos
   const availableLenses = useMemo(() => {
     const lenses = new Set(allPhotos.map(p => p.exif.LensModel).filter(Boolean));
     return Array.from(lenses).sort() as string[];
   }, [allPhotos]);
-
-  // 效果一：當可用的相機型號列表更新時，自動將所有型號設定為「已選取」
+  // Automatically select all models and lenses when they change
   useEffect(() => {
     setSelectedModels(availableModels);
   }, [availableModels]);
-
-  // 效果二：當可用的鏡頭型號列表更新時，自動將所有鏡頭設定為「已選取」
+  // Automatically select all lenses when they change
   useEffect(() => {
     setSelectedLenses(availableLenses);
   }, [availableLenses]);
-
+  // Debounce focal length range input to avoid excessive updates
   useEffect(() => {
-    // 設定一個計時器
     const timer = setTimeout(() => {
-      // 500ms 後，將輸入框的即時值，同步到 "debounced" state 中
       setDebouncedFocalLengthRanges(focalLengthRanges);
-    }, 800); // 延遲 500 毫秒
-
-    // 清除函式：在下一次 effect 執行前 (即使用者又輸入新字元時)，清除上一個計時器
+    }, 800);
     return () => {
       clearTimeout(timer);
     };
   }, [focalLengthRanges]);
-
+  // Regenerate chart when dependencies change
   useEffect(() => {
-    // 只有當有照片時才自動生成圖表，避免初始渲染時執行
     if (allPhotos.length > 0) {
       console.log("偵測到依賴項變更，自動生成圖表..."); // for debugging
       handleGenerateChart();
     }
   }, [
-    // 在這裡列出所有會影響圖表結果的"依賴項"
-    groupBy,              // 統計依據
-    focalLengthMode,      // 焦段統計模式
+    groupBy,              
+    focalLengthMode,      
     debouncedFocalLengthRanges,
-    selectedModels,       // 已選相機型號
-    selectedLenses,       // 已選鏡頭型號
-    selectedFolderPaths,  // 已選資料夾
-    cropFactors,          // 等效焦段倍率設定
-    allPhotos             // 當照片本身更新時 (例如讀取新資料夾)
+    selectedModels,       
+    selectedLenses,       
+    selectedFolderPaths,  
+    cropFactors,          
+    allPhotos             
   ]);
-
-  // --- 函式 ---
-
-  // [Request 1] 更新等效焦段倍率的函式
+  // Handle changes to crop factors
   const handleCropFactorChange = (model: string, factorStr: string) => {
     const factor = parseFloat(factorStr);
     setCropFactors(prev => ({
@@ -185,7 +159,7 @@ function App() {
       [model]: isNaN(factor) || factor <= 0 ? 1.0 : factor,
     }));
   };
-
+  // Function to recursively count image files in a directory
   const countFiles = async (dirHandle: FileSystemDirectoryHandle): Promise<number> => {
     let count = 0;
     const imageRegex = /\.(jpe?g|heic|cr3|arw)$/i;
@@ -193,17 +167,15 @@ function App() {
       if (entry.kind === 'file' && imageRegex.test(entry.name)) {
         count++;
       } else if (entry.kind === 'directory') {
-        count += await countFiles(entry); // 遞迴計數子資料夾
+        count += await countFiles(entry); 
       }
     }
     return count;
   };
-
-  // [新增] 遞迴讀取資料夾內容的輔助函式
+  // Function to recursively process a directory and extract photo data
   const processDirectory = async (dirHandle: FileSystemDirectoryHandle, currentPath: string, onProgress: () => void): Promise<PhotoData[]> => {
     const photoResults: PhotoData[] = [];
-    const imageRegex = /\.(jpe?g|heic|cr3|arw)$/i; // 簡化判斷式
-
+    const imageRegex = /\.(jpe?g|heic|cr3|arw)$/i; 
     for await (const entry of dirHandle.values()) {
       const entryPath = `${currentPath}/${entry.name}`;
       if (entry.kind === 'file' && imageRegex.test(entry.name)) {
@@ -229,7 +201,7 @@ function App() {
             source: 'local',
             filename: file.name,
             exif: processedExif,
-            folderPath: currentPath, // [修改] 記錄檔案所在的資料夾路徑
+            folderPath: currentPath, 
           });
         } catch (e) {
           console.warn(`無法解析檔案 ${file.name} 的 EXIF`, e);
@@ -237,29 +209,24 @@ function App() {
           onProgress();
         }
       } else if (entry.kind === 'directory') {
-        // 如果是資料夾，就遞迴呼叫自己，並將結果合併
         const subFolderPhotos = await processDirectory(entry, entryPath, onProgress);
         photoResults.push(...subFolderPhotos);
       }
     }
     return photoResults;
   };
-
+  // Handle legacy folder selection via hidden file input
   const handleLegacyFolderSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
     const files = event.target.files;
-
     if (!files || files.length === 0) {
-      return; // 使用者沒有選擇任何檔案
+      return; 
     }
-
-    // 將 FileList 轉換為真正的陣列
     const fileArray = Array.from(files);
     const totalFiles = fileArray.length;
-
+    // Set progress state to loading
     setProgress({ loading: true, processed: 0, total: totalFiles, message: '正在解析照片 EXIF 資訊...' });
-
-    // 處理檔案（這裡不需要遞迴，因為 <input> 會一次性給出所有檔案）
+    // Process each file to extract EXIF data
     const photoPromises = fileArray.map(async (file) => {
       try {
         const exifObj = await exifr.parse(file);
@@ -277,13 +244,9 @@ function App() {
             FocalLengthIn35mmFormat: exifObj.FocalLengthIn35mmFormat,
           };
         }
-        
-        
-        // 嘗試從檔案路徑中猜測資料夾名稱
         const folderPath = file.webkitRelativePath.substring(0, file.webkitRelativePath.lastIndexOf('/')) || 'Selected Folder';
-
+        // Update progress after processing each file
         setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
-        
         return {
           id: `local-${file.name}-${file.lastModified}`,
           source: 'local',
@@ -297,79 +260,63 @@ function App() {
         return null;
       }
     });
-
+    // Wait for all files to be processed and filter out any null results
     const newPhotos = (await Promise.all(photoPromises)).filter(Boolean) as PhotoData[];
-
-    // 合併照片
+    // Merge new photos with existing ones, avoiding duplicates
     setLocalPhotos(prevPhotos => {
       const existingIds = new Set(prevPhotos.map(p => p.id));
       const uniqueNewPhotos = newPhotos.filter(p => !existingIds.has(p.id));
       const combinedPhotos = [...prevPhotos, ...uniqueNewPhotos];
-
       const allPaths = Array.from(new Set(combinedPhotos.map(p => p.folderPath))).sort();
       setAllFolderPaths(allPaths);
-
       const newPaths = Array.from(new Set(uniqueNewPhotos.map(p => p.folderPath)));
       setSelectedFolderPaths(prevSelected => Array.from(new Set([...prevSelected, ...newPaths])).sort());
-      
       return combinedPhotos;
     });
-
-    // 重設 input 的值，這樣使用者才能重複選擇同一個資料夾
+    // Reset the file input value to allow re-selection of the same folder
     if (event.target) {
       event.target.value = '';
     }
-    
+    // Reset progress state
     setProgress({ loading: false, processed: 0, total: 0, message: '' });
   };
   
-  // [最終版本] 包含進度條與照片合併功能的完整函式
+  // Handle folder selection using the File System Access API
   const handleLocalFolderSelect = async () => {
-    
     if (window.showDirectoryPicker) {
-      // --- 這是原本的、基於新 API 的完整邏輯 ---
       console.log("使用 File System Access API (新方法)");
       setError('');
       try {
-        // @ts-ignore
         const dirHandle = await window.showDirectoryPicker();
-        
         setProgress({ loading: true, processed: 0, total: 0, message: '正在掃描檔案總數...' });
-
         const totalFiles = await countFiles(dirHandle);
-        
         if (totalFiles === 0) {
           setError('在選擇的資料夾及其子資料夾中沒有找到符合條件的照片檔案。');
           setProgress({ loading: false, processed: 0, total: 0, message: '' });
           return;
         }
-        
+        // Set progress state to loading
         setProgress({ loading: true, processed: 0, total: totalFiles, message: '正在解析照片 EXIF 資訊...' });
-        
         const onProgressUpdate = () => {
           setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
         };
-
+        // Process the selected directory
         const newPhotos = await processDirectory(dirHandle, dirHandle.name, onProgressUpdate);
-
+        // Merge new photos with existing ones, avoiding duplicates
         setLocalPhotos(prevPhotos => {
           const existingIds = new Set(prevPhotos.map(p => p.id));
           const uniqueNewPhotos = newPhotos.filter(p => !existingIds.has(p.id));
           const combinedPhotos = [...prevPhotos, ...uniqueNewPhotos];
-
           const allPaths = Array.from(new Set(combinedPhotos.map(p => p.folderPath))).sort();
           setAllFolderPaths(allPaths);
-
           const newPaths = Array.from(new Set(uniqueNewPhotos.map(p => p.folderPath)));
           setSelectedFolderPaths(prevSelected => Array.from(new Set([...prevSelected, ...newPaths])).sort());
-          
           return combinedPhotos;
         });
-
       } catch (e) {
         console.error(e);
         if (e instanceof DOMException && e.name === 'AbortError') {
-          setError(''); // 使用者取消選擇時，不要顯示錯誤
+          setError(''); 
         } else {
           setError('讀取本地資料夾失敗。');
         }
@@ -377,7 +324,6 @@ function App() {
         setProgress({ loading: false, processed: 0, total: 0, message: '' });
       }
     } else {
-      // --- 備用方案：觸發隱藏的 input ---
       console.log("瀏覽器不支援，使用傳統 input (備用方案)");
       if (fileInputRef.current) {
         fileInputRef.current.click();
@@ -385,51 +331,46 @@ function App() {
     }
   };
 
-
-  // 取得等效焦段的輔助函式
+  // Calculate equivalent focal length based on crop factor
   const getEquivalentFocalLength = (photo: PhotoData): number | undefined => {
     const { exif } = photo;
-    // 優先使用相機直接提供的等效焦段
+    // Use 35mm equivalent if available
     if (typeof exif.FocalLengthIn35mmFormat === 'number' && exif.FocalLengthIn35mmFormat > 0) {
       return exif.FocalLengthIn35mmFormat;
     }
-    // 其次，如果使用者有設定換算比例，則手動計算
+    // Apply crop factor if known
     if (exif.Model && cropFactors[exif.Model] && typeof exif.FocalLength === 'number') {
       return Math.round(exif.FocalLength * cropFactors[exif.Model]);
     }
-    // 最後，回傳原始焦段 (當作全幅)
+    // Fallback to actual focal length
     return exif.FocalLength;
   }
 
+  // Parse focal length ranges input into structured rules
   const parseFocalLengthRanges = (rangesStr: string): ParsedRange[] => {
     const groups = rangesStr.split(',');
-
     return (groups.map(group => {
       const trimmedGroup = group.trim();
-
-      // 處理 "other" 關鍵字 (功能三)
       if (trimmedGroup.toLowerCase() === 'other') {
         return {
           label: 'Other',
           type: 'other',
-          // 'other' 的測試邏輯比較特殊，會在主函式中處理
+
           test: () => false, 
         };
       }
-
-      // 處理合併區間 "+" (功能一)
+      // Handle merged ranges like "18-55+70-200"
       if (trimmedGroup.includes('+')) {
         const subRanges = trimmedGroup.split('+').map(r => r.trim());
         const parsedSubRanges = subRanges.map(sub => {
           const [min, max] = sub.split('-').map(Number);
           return { min, max };
         });
-
-        // 檢查所有子區間是否都合法
+        // If any sub-range is invalid, skip this rule
         if (parsedSubRanges.some(r => isNaN(r.min) || isNaN(r.max))) {
-          return null; // 有不合法的子區間，則整個群組無效
+          return null; 
         }
-
+        // Create a test function that checks if a focal length falls within any of the sub-ranges
         return {
           label: subRanges.map(s => `[${s}]`).join('+') + 'mm',
           type: 'merged',
@@ -437,20 +378,19 @@ function App() {
         };
       }
 
-      // 處理單一數值 (功能二)
+      // Handle single focal lengths like "50"
       if (!trimmedGroup.includes('-')) {
         const focalLength = Number(trimmedGroup);
         if (!isNaN(focalLength)) {
           return {
             label: `${focalLength}mm`,
             type: 'single',
-            // 使用 Math.round 讓 84.5mm 或 85.4mm 都能被算進 85mm
             test: (fl: number) => Math.round(fl) === focalLength,
           };
         }
       }
 
-      // 處理標準的 "min-max" 區間
+      // Handle ranges like "24-70"
       const [min, max] = trimmedGroup.split('-').map(Number);
       if (!isNaN(min) && !isNaN(max)) {
         return {
@@ -459,32 +399,30 @@ function App() {
           test: (fl: number) => fl >= min && fl <= max,
         };
       }
-
-      return null; // 如果格式不符，返回 null
-    }).filter(Boolean) as ParsedRange[]); // 過濾掉所有 null 的無效項目
+      return null; 
+    }).filter(Boolean) as ParsedRange[]); 
   };
 
-
-  // 處理圖表生成
+  // Generate chart data based on current filters and grouping
   const handleGenerateChart = () => {
     const photosFromSelectedFolders = allPhotos.filter(photo =>
       selectedFolderPaths.includes(photo.folderPath)
     );
-
+    // If no models or lenses are selected, clear the chart
     if (selectedModels.length === 0 || selectedLenses.length === 0) {
       setChartData({
-        labels: [], // 沒有標籤
+        labels: [],
         datasets: [{
-          label: '未選取任何相機/鏡頭', // 顯示在圖表上的提示訊息
-          data: [], // 沒有資料
+          label: '未選取任何相機/鏡頭', 
+          data: [], 
           backgroundColor: [],
           borderColor: [],
           borderWidth: 1,
         }],
       });
-      return; // 直接返回，不再執行後續的統計
+      return; 
     }
-
+    // Filter photos based on selected models and lenses
     const filteredPhotos = photosFromSelectedFolders.filter(photo => {
       const modelMatch = selectedModels.includes(photo.exif.Model || '');
       let lensMatch = true;
@@ -493,16 +431,14 @@ function App() {
       }
       return modelMatch && lensMatch;
     });
-
+    // If no photos match the filters, clear the chart
     const counts: { [key: string]: number } = {};
     let labels: string[] = [];
 
-    // --- 焦段統計邏輯 ---
+    // Handle grouping by focal length with different modes
     if (groupBy === 'FocalLength') {
-      if (focalLengthMode === 'range') { // [Request 5] 區間模式
-
+      if (focalLengthMode === 'range') { 
         const parsedRanges = parseFocalLengthRanges(focalLengthRanges);
-
         const otherRule = parsedRanges.find(r => r.type === 'other');
         const regularRules = parsedRanges.filter(r => r.type !== 'other');
 
@@ -512,24 +448,23 @@ function App() {
         filteredPhotos.forEach(photo => {
           const focalLength = getEquivalentFocalLength(photo);
           if (typeof focalLength === 'number') {
-            // 先嘗試匹配常規規則
+
             const foundRule = regularRules.find(rule => rule.test(focalLength));
             
             if (foundRule) {
               counts[foundRule.label]++;
             } else if (otherRule) {
-              // 如果沒有匹配到任何常規規則，且使用者定義了 'other'，則歸入 'Other'
               counts[otherRule.label]++;
             }
           }
         });
-
+        // Remove "Other" label if it has zero count
         if (otherRule && counts[otherRule.label] === 0) {
           delete counts[otherRule.label];
           labels = labels.filter(l => l !== otherRule.label);
         }
-
-      } else { // [Request 5] 連續直方圖模式
+      } else { 
+          // Continuous mode: count each focal length individually
           const focalLengths = filteredPhotos.map(getEquivalentFocalLength).filter(fl => typeof fl === 'number') as number[];
           if(focalLengths.length === 0) {
               setChartData(null);
@@ -544,26 +479,26 @@ function App() {
           focalLengths.forEach(fl => {
               counts[Math.round(fl).toString()]++;
           });
-          labels = Object.keys(counts); // 依照焦段自然排序
+          labels = Object.keys(counts);
 
           const sortedByCount = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
           setTopFocalLengthLabels(sortedByCount.slice(0, 3));
       }
-    } else { // --- 其他屬性統計邏輯 ---
+    } else { 
         filteredPhotos.forEach(photo => {
             const key = (photo.exif[groupBy] as string) || 'Unknown';
             counts[key] = (counts[key] || 0) + 1;
         });
-        // 依照數量從多到少排序
+
         labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
         setTopFocalLengthLabels([]);
     }
     
-    // --- 轉換為 Chart.js 資料格式 ---
+    // Prepare data for Chart.js
     const data = labels.map(label => counts[label]);
-    // const total = data.reduce((sum, val) => sum + val, 0);
     const colors = data.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`);
 
+    // Highlight top 3 focal lengths in continuous mode
     setChartData({
       labels,
       datasets: [{
@@ -576,19 +511,20 @@ function App() {
     });
   };
 
+  // Determine if the chart should be horizontal based on grouping
   const isHorizontal = ['Model', 'LensModel'].includes(groupBy);
   const activeFilterCount = selectedModels.length + selectedLenses.length + selectedFolderPaths.length;
 
-  // --- JSX 渲染 ---
+  // Component for rendering filter groups with select all functionality
   return (
     <div className="container">
       <input
         type="file"
-        webkitdirectory="true" // 關鍵屬性，允許選擇資料夾
+        webkitdirectory="true" 
         ref={fileInputRef}
-        onChange={handleLegacyFolderSelect} // 指向新的處理函式
-        style={{ display: 'none' }} // 保持隱藏
-        multiple // 確保可以讀取多個檔案
+        onChange={handleLegacyFolderSelect} 
+        style={{ display: 'none' }} 
+        multiple 
       />
       <h1>照片 EXIF 資訊統計器</h1>
       <div className="card">
@@ -639,13 +575,8 @@ function App() {
                   <option value="Model">相機型號</option>
                   <option value="LensModel">鏡頭型號</option>
                   <option value="FocalLength">等效焦段</option>
-                  {/* ... 其他選項 ... */}
                 </select>
               </div>
-              {/* {groupBy !== 'FocalLength' && (
-                <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button>
-              )} */}
-              {/* <button onClick={handleGenerateChart} className="generate-button">生成統計圖表</button> */}
             </div>
             
             {groupBy === 'FocalLength' && (
@@ -670,7 +601,6 @@ function App() {
                     </div>
                   </div>
                   
-                  {/* 只有在 "區間統計" 模式下才顯示 */}
                   {focalLengthMode === 'range' && (
                     <div className="form-group">
                       <label>焦段區間設定:</label>
@@ -678,7 +608,6 @@ function App() {
                         type="text" 
                         value={focalLengthRanges} 
                         onChange={e => setFocalLengthRanges(e.target.value)} 
-                        // placeholder="例如: 24-70, 70-200, 200-500"
                       />
                       <small className="helper-text">
                         用 `,` 分隔，支援 `24-70` (區間), `85` (單值), `24-70+100-400` (合併), `other` (其他)。
@@ -694,18 +623,17 @@ function App() {
                 <Bar 
                   data={chartData} 
                   options={{
-                    indexAxis: isHorizontal ? 'y' : 'x', // [Request 6] 動態設定圖表方向
+                    indexAxis: isHorizontal ? 'y' : 'x', 
                     responsive: true,
                     layout: {
                       padding: {
                         top: 0,
-                        right: 40 // 調大一點，給標籤留空間
+                        right: 40 
                       }
                     },
                     plugins: {
                       legend: { display: false },
                       title: { display: true, text: chartData.datasets[0].label },
-                      // [Request 7] 設定百分比標籤
                       datalabels: {
                         anchor: 'end',
                         align: 'end',
@@ -714,7 +642,7 @@ function App() {
                           if (groupBy === 'FocalLength' && focalLengthMode === 'continuous') {
                             const currentLabel = context.chart.data.labels?.[context.dataIndex] as string;
                             if (!topFocalLengthLabels.includes(currentLabel)) {
-                              return null; // 如果不是前三名，不顯示標籤
+                              return null;
                             }
                           }
                           const total = context.chart.data.datasets[0].data.reduce<number>(
@@ -731,7 +659,7 @@ function App() {
                         }
                       }
                     },
-                    scales: { // [Request 6] 讓長標籤有足夠空間
+                    scales: {
                         y: {
                             ticks: {
                                 autoSkip: false
@@ -750,114 +678,3 @@ function App() {
 }
 
 export default App;
-
-
-  // // 處理 Synology 連線
-  // const handleSynologyFetch = async () => {
-  //   setError('');
-  //   setSynoPhotos([]);
-  //   setIsLoading(true);
-  //   let sidToUse = synoSessionId;
-
-  //   try {
-  //     // 步驟一：如果沒有 Session ID，先進行登入
-  //     if (!sidToUse) {
-  //       const loginResponse = await fetch('/api/synology-login', {
-  //         method: 'POST',
-  //         headers: { 'Content-Type': 'application/json' },
-  //         body: JSON.stringify({
-  //           host: synoHost,
-  //           account: synoAccount,
-  //           password: synoPassword,
-  //         }),
-  //       });
-
-  //       const loginData = await loginResponse.json();
-
-  //       if (!loginResponse.ok) {
-  //         throw new Error(loginData.message || `登入失敗，狀態碼: ${loginResponse.status}`);
-  //       }
-        
-  //       sidToUse = loginData.sid;
-  //       setSynoSessionId(sidToUse); // 儲存 Session ID
-  //     }
-
-  //     // 步驟二：使用 Session ID 直接向 Synology 請求資料
-  //     const synoPhotosUrl = `${synoHost}/photo/webapi/entry.cgi?api=SYNO.PhotoStation.Photo&method=list&version=1&album_id=${synoAlbumId}&sid=${sidToUse}`;
-      
-  //     // 這裡我們直接向 Synology 發出請求，流量不會經過 Vercel
-  //     const response = await fetch(synoPhotosUrl);
-      
-  //     if (!response.ok) {
-  //       // 如果 Session ID 失效，需要重新登入
-  //       if (response.status === 401) {
-  //         setSynoSessionId(null); // 清除失效的 Session ID
-  //         throw new Error('連線已過期，請重新嘗試。');
-
-  //         // console.warn('Session ID 已過期，正在嘗試重新登入...');
-  //         // const newSid = await getSessionId(true); // 傳入參數強制重新登入
-  //         // response = await fetch(`${synoPhotosUrl}&sid=${newSid}`); // 用新的 SID 再次請求
-  //       }
-  //       throw new Error(`從 Synology 取得資料失敗，狀態碼: ${response.status}`);
-  //     }
-
-  //     const data: any = await response.json();
-
-  //     if (!data.success) {
-  //       throw new Error(data.error?.message || '從 Synology 取得資料失敗。');
-  //     }
-
-  //     const processedPhotos = data.data.list.map((photo: any) => {
-  //       const rawExif = photo.additional?.exif || {};
-  //       const processedExif: ExifData = {
-  //         Make: rawExif.Make,
-  //         Model: rawExif.Model,
-  //         LensModel: rawExif.LensModel, // 新增 LensModel
-  //         ExposureTime: rawExif.ExposureTime,
-  //         FNumber: rawExif.FNumber,
-  //         ISOSpeedRatings: rawExif.ISOSpeedRatings,
-  //         DateTimeOriginal: rawExif.DateTimeOriginal,
-  //         FocalLength: rawExif.FocalLength,
-  //         FocalLengthIn35mmFormat: rawExif.FocalLengthIn35mmFormat,
-  //         };
-  //       return {
-  //         filename: photo.filename,
-  //         exif: processedExif,
-  //       };
-  //     });
-
-  //     setSynoPhotos(processedPhotos);
-
-  //   } catch (e) {
-  //     console.error(e);
-  //     setError(e instanceof Error ? e.message : '發生未知錯誤。');
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
-
-  // // 為了在網頁關閉時自動登出，我們可以使用 useEffect
-  // useEffect(() => {
-  //     // 確保登出函式能拿到最新的狀態
-  //     const logoutOnUnmount = () => {
-  //         if (synoSessionId && synoHost) {
-  //             fetch('/api/synology-logout', {
-  //                 method: 'POST',
-  //                 headers: { 'Content-Type': 'application/json' },
-  //                 body: JSON.stringify({ host: synoHost, sid: synoSessionId }),
-  //             }).then(() => {
-  //                 console.log('已登出 Synology。');
-  //             }).catch(e => {
-  //                 console.error('登出失敗:', e);
-  //             }).finally(() => {
-  //                 // 不論成功或失敗，都清除狀態
-  //                 setSynoSessionId(null);
-  //             });
-  //         }
-  //     };
-      
-  //     // 在元件卸載時執行登出
-  //     return () => {
-  //         logoutOnUnmount();
-  //     };
-  // }, [synoSessionId, synoHost]); // 將相關狀態加入依賴項

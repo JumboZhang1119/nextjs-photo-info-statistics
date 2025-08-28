@@ -1,16 +1,9 @@
 // src/cameraData.ts
 
-/**
- * 定義 CropFactor 物件的型別
- * key 是 string (相機型號), value 是 number (倍率)
- */
+// Define a mapping of camera models to their crop factors
 export type CropFactorMap = {
     [model: string]: number;
   };
-  
-  /**
-   * 預設的相機等效焦段倍率資料
-   */
   export const defaultCropFactors: CropFactorMap = {
     // --- Sony ---
     'ILCE-7M4': 1.0,    // Sony α7 IV
@@ -45,7 +38,7 @@ export type CropFactorMap = {
     'Canon EOS R10': 1.6,
     'Canon EOS R50': 1.6,
     'Canon EOS M6': 1.6,
-    'Canon EOS M6 Mark II': 1.6, // 雖然您原本就有，但確認倍率
+    'Canon EOS M6 Mark II': 1.6, 
     'Canon EOS 6D': 1.0,
     'Canon EOS 6D Mark II': 1.0,
     'Canon EOS 90D': 1.6,

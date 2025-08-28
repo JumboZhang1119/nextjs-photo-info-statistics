@@ -9,27 +9,24 @@ const port = 3000;
 app.use(cors());
 app.use(express.json());
 
-// 讓 Node.js 接受自簽名憑證
+// Create an HTTPS agent that ignores self-signed certificate errors
 const agent = new https.Agent({
     rejectUnauthorized: false
 });
 
-// 新增一個登入路由，專門用於取得 Session ID
+// Synology Login Endpoint
 app.post('/api/synology-login', async (req: Request, res: Response) => {
     const { host, account, password } = req.body;
     try {
         const loginUrl = `${host}/photo/webapi/auth.cgi?api=SYNO.PhotoStation.Auth&method=login&version=1&account=${account}&passwd=${password}&format=sid`;
-        
+        // Use the custom HTTPS agent
         const response = await fetch(loginUrl, { agent });
         const data: any = await response.json();
-
+        // Handle the response based on success or failure
         if (data.success) {
-            // 成功取得 Session ID，回傳給前端
             res.status(200).json({ success: true, sid: data.data.sid });
         } else {
-            // 處理登入失敗，包括二階段驗證
             if (data.error && data.error.code === 400) {
-                // Synology API 的錯誤碼 400 通常代表需要 2FA
                 res.status(401).json({ success: false, message: '需要二階段驗證碼。' });
             } else {
                 res.status(401).json({ success: false, message: data.error?.message || '登入失敗。' });
@@ -41,7 +38,7 @@ app.post('/api/synology-login', async (req: Request, res: Response) => {
     }
 });
 
-// 新增一個路由來處理登出
+// Synology Logout Endpoint
 app.post('/api/synology-logout', async (req: Request, res: Response) => {
     const { host, sid } = req.body;
     try {
@@ -54,12 +51,10 @@ app.post('/api/synology-logout', async (req: Request, res: Response) => {
     }
 });
 
-// 原本的程式碼，現在主要處理相簿資料
 app.post('/api/synology', async (req: Request, res: Response) => {
-    // 為了避免混亂，我們可以先保留，但知道它將被替換掉
-    // ...
 });
 
+// Start the server
 app.listen(port, () => {
     console.log(`後端伺服器已啟動，正在監聽 http://localhost:${port}`);
 });
